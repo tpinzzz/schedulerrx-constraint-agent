@@ -1,0 +1,31 @@
+# Internal — keep OUT of the public repo (business strategy / scratch experiments)
+prompts/
+planning/
+scratch/
+
+# Vendored proprietary solver snapshot (pinned copy of scheduler-rx — never publish)
+vendor/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Virtual env
+.venv/
+venv/
+
+# Secrets / local env
+.env
+.env.local
+
+# OS / editor
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# Build / deploy
+*.log

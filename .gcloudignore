@@ -1,0 +1,27 @@
+# Controls what `gcloud run deploy --source .` uploads. When present, gcloud uses
+# THIS instead of .gitignore — so the secret-bearing paths must be listed here too.
+.git/
+.gitignore
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# Secrets / internal docs — must never be uploaded
+.env
+.env.*
+prompts/
+planning/
+scratch/
+# NOTE: vendor/ is intentionally NOT ignored here — the proprietary solver snapshot
+# must ship inside the (private) Cloud Run image even though .gitignore keeps it out
+# of the public git repo.
+
+# Not needed at runtime (image is built from the Dockerfile)
+tests/
+docs/
+*.md
+.dockerignore
+.DS_Store
