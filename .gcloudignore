@@ -25,3 +25,5 @@ docs/
 *.md
 .dockerignore
 .DS_Store
+video/
+submission/

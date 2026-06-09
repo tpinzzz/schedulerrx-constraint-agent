@@ -27,7 +27,7 @@ _demo_cache: dict[str, dict] = {}
 
 def _get_demo(scenario: str) -> dict:
     if scenario not in _demo_cache:
-        _demo_cache[scenario] = realsolver.demo_payload(scenario)
+        _demo_cache[scenario] = realsolver.anonymize_pods(realsolver.demo_payload(scenario))
     return _demo_cache[scenario]
 
 
@@ -122,7 +122,7 @@ function render(){
   dates.forEach(d=>{h+='<th'+(wd(d)==='Thu'?' class="thu"':'')+'>'+wd(d)+'<br><small>'+d.slice(5)+'</small></th>';});
   h+='</tr></thead><tbody>';
   shifts.forEach(s=>{
-    const label=s.code[0].toUpperCase()+s.code.slice(1)+' · '+s.location[0].toUpperCase()+s.location.slice(1);
+    const label=s.code[0].toUpperCase()+s.code.slice(1)+' · Pod '+s.location.toUpperCase();
     h+='<tr><th class="shift">'+label+'</th>';
     dates.forEach(d=>{
       const k=key(s.id,d), isGap=gap.has(k), names=cell[k]||[];

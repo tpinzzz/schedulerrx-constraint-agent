@@ -32,9 +32,47 @@ from app.solvers.factories import resolve_extra_factories_for_norms
 
 from .diagnostic import _forced_values, _unsatisfiable_coverage_linears
 
-# EM program config (2 pods, 6 shift instances: day/night/swing × purple/orange).
+# EM program config (2 pods, 6 shift instances: day/night/swing × two pods, A/B).
 # Built once at import — pure literals, no DB.
 _CONFIG = build_em_program_config()
+
+
+# ---------------------------------------------------------------------------
+# Output anonymization — relabel pods to generic "Pod A/B" at the OUTPUT boundary
+# (the program's real pod names are not published). Applied as a whole to a
+# tool/route payload, so the display strings the LLM and /demo render are scrubbed
+# while the internal join keys stay mutually consistent within that payload.
+#
+# The substitution map is DERIVED from the (private) program config — the real
+# pod names are never hard-coded in this open layer. Per pod we map the display
+# name (config ``location.name``, e.g. the full pod label) → "Pod A/B…" and the
+# bare code (``location.id``) → "a/b…" used inside shift_instance ids like
+# "day-<code>". Display names run before codes so the full label is rewritten first.
+# ---------------------------------------------------------------------------
+def _build_pod_subs() -> tuple[tuple[str, str], ...]:
+    names, codes = [], []
+    for i, loc in enumerate(_CONFIG.locations):
+        letter = chr(ord("A") + i)
+        names.append((loc.name, f"Pod {letter}"))   # display label  → "Pod A"
+        codes.append((loc.id, letter.lower()))       # join-key code  → "a"
+    return tuple(names + codes)                       # display-first
+
+
+_POD_SUBS = _build_pod_subs()
+
+
+def anonymize_pods(obj: Any) -> Any:
+    """Recursively rewrite pod references in a payload's string values. Identity on
+    everything else. Idempotent (no source token survives a pass)."""
+    if isinstance(obj, str):
+        for src, dst in _POD_SUBS:
+            obj = obj.replace(src, dst)
+        return obj
+    if isinstance(obj, dict):
+        return {k: anonymize_pods(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [anonymize_pods(x) for x in obj]
+    return obj
 
 
 # ---------------------------------------------------------------------------

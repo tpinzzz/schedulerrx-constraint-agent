@@ -31,7 +31,7 @@ def diagnose_schedule(scenario: str) -> dict[str, Any]:
     solver authorizes (each with a stable id). `scenario` is a registered scenario
     id from `list_known_scenarios`. The candidate ids are the ONLY actions a caller
     may propose; never invent one."""
-    return realsolver.diagnose(scenario)
+    return realsolver.anonymize_pods(realsolver.diagnose(scenario))
 
 
 @mcp.tool
@@ -41,7 +41,7 @@ def verify_relaxation(scenario: str, candidate_ids: list[str]) -> dict[str, Any]
     resulting assignments for the previously-unstaffable date(s). This is the
     verification that gates which fixes may reach a human: an insufficient set of
     relaxations comes back feasible=False and must NOT be presented as a fix."""
-    return realsolver.verify(scenario, candidate_ids)
+    return realsolver.anonymize_pods(realsolver.verify(scenario, candidate_ids))
 
 
 @mcp.tool
