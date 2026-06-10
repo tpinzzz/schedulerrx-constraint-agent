@@ -4,7 +4,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 ![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)
-![Tests](https://img.shields.io/badge/tests-11%20passing-brightgreen.svg)
+![Tests](https://img.shields.io/badge/tests-10%20passing-brightgreen.svg)
 ![Vertex AI](https://img.shields.io/badge/Gemini-Vertex%20AI-4285F4.svg)
 
 > Built for the **Google for Startups AI Agents Challenge** · runs on **Google Cloud Vertex AI** (Gemini) + Cloud Run.
@@ -13,15 +13,15 @@
 
 ---
 
-## TL;DR — it diagnosed *and fixed* a real production failure
+## TL;DR — it retrospectively diagnosed a real production failure
 
-A live Emergency-Medicine residency program's schedule block (~4 weeks, 14 residents) came back from the shipped product as a flat **`INFEASIBLE`** — no schedule, no actionable reason. We pointed this agent at the real data (read-only). In **~25 seconds / 47 solver re-solves** it:
+An Emergency-Medicine residency program's schedule block (~4 weeks, 14 residents) came back from the shipped product as a flat **`INFEASIBLE`** — no schedule, no actionable reason. The block was **resolved by hand at the time**; afterward we pointed this agent at the same block (read-only). In **~25 seconds / 47 solver re-solves** it:
 
-- isolated the cause to **2 of 14 residents** (proving every other resident's time-off was irrelevant),
+- isolated the cause down to a small subset of the residents (proving every other resident's time-off was irrelevant),
 - produced **two minimal, solver-*verified* fixes** — decline 2 time-off requests, **or** relax 2 shift targets,
 - and ruled out a plausible **red herring** (a data bug that, fixed on its own, doesn't restore feasibility).
 
-The fix was applied; the block solved. → **[Full case study](docs/CASE_STUDY.md).**
+It reproduced the diagnosis and a verified fix in seconds — turning an after-the-fact "why was that unsolvable?" into a defensible answer. Nothing was written back to production. → **[Full case study](docs/CASE_STUDY.md).**
 
 ## The problem
 
@@ -38,7 +38,7 @@ No human can act on that. In production it's an *engineer's* job to decipher —
 
 Given an infeasible schedule the agent:
 
-1. **Diagnoses** it — running the real CP-SAT model and explaining, in coordinator English, *why* it can't be solved.
+1. **Diagnoses** it — running the real CP-SAT model and explaining, in plain English a chief resident or associate program director can act on, *why* it can't be solved.
 2. **Ranks relaxations** — a closed set the solver itself authored, ordered least- to most-disruptive.
 3. **Verifies before recommending** — every fix is **re-solved**; a plausible-but-insufficient one is caught and never presented.
 4. **Shows the resulting schedule** once a verified fix is applied.
@@ -47,7 +47,7 @@ Given an infeasible schedule the agent:
 
 ```mermaid
 flowchart LR
-  U([Coordinator / judge]) --> A
+  U([Chief resident / APD / judge]) --> A
   subgraph A[ADK LlmAgent · Gemini on Vertex AI]
     direction TB
     P["diagnose → explain → rank → VERIFY → present"]
@@ -96,10 +96,10 @@ python main.py --diagnose em_block_capacity    # emergent case → IIS finds a v
 python main.py --diagnose em_block_gap         # clean single-gap case
 uvicorn server:app --port 8080                 # then open /dev-ui (agent) and /demo (calendar)
 
-pytest -q                                       # 11 hermetic solver tests (need the snapshot below; skipped without it)
+pytest -q                                       # 10 hermetic solver tests (need the snapshot below; skipped without it)
 ```
 
-> **On the solver snapshot.** The production OR-Tools CP-SAT engine is SchedulerRX's proprietary IP; the deployed build vendors a pinned snapshot under `vendor/` (not included in this open repo). **The open contribution is the agent layer** — the neuro-symbolic architecture, the MCP tools, and the relaxation/IIS search. Because the 11 solver tests import that snapshot, `pytest -q` **skips them with an explanation when it's absent** (they pass in CI / the maintainer's environment). The easiest way to see it end-to-end is the **live links above**.
+> **On the solver snapshot.** The production OR-Tools CP-SAT engine is SchedulerRX's proprietary IP; the deployed build vendors a pinned snapshot under `vendor/` (not included in this open repo). **The open contribution is the agent layer** — the neuro-symbolic architecture, the MCP tools, and the relaxation/IIS search. Because the 10 solver tests import that snapshot, `pytest -q` **skips them with an explanation when it's absent** (they pass in CI / the maintainer's environment). The easiest way to see it end-to-end is the **live links above**.
 
 ## Deploy (Cloud Run · Vertex AI)
 
@@ -123,10 +123,10 @@ Auth is the Cloud Run runtime service account (Vertex `aiplatform.user`) — no 
 
 ## Business case
 
-This is the customer-facing infeasibility-explanation layer for **SchedulerRX**, an EM-residency scheduling product with an **active pilot at an EM residency program** and more EM-program demos in the pipeline.
+This is the customer-facing infeasibility-explanation layer for **SchedulerRX**, an EM-residency scheduling product **built and tested with an EM residency program on real scheduling data, with demos underway at additional academic EM programs.**
 
 - Healthcare scheduling is heavily **ACGME-regulated**; duty-hour violations carry accreditation and patient-safety consequences. *"Why won't my schedule solve, and what's the safe thing to change?"* is a constant question.
-- Today, deciphering a solver failure is engineer-time. This turns it into a self-serve answer a coordinator can act on — **engineer-hours → seconds**, as the case study shows on real data.
+- Today, deciphering a solver failure is engineer-time. This turns it into a self-serve answer a chief resident or associate program director can act on — **engineer-hours → seconds**, as the case study shows on real data.
 - One bounded Gemini call per diagnosis; the heavy lifting is free, deterministic CP-SAT; scale-to-zero. Cost stays flat-to-trivial across programs and blocks.
 
 ## Repository layout

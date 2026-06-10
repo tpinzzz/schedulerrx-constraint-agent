@@ -122,7 +122,7 @@ function render(){
   dates.forEach(d=>{h+='<th'+(wd(d)==='Thu'?' class="thu"':'')+'>'+wd(d)+'<br><small>'+d.slice(5)+'</small></th>';});
   h+='</tr></thead><tbody>';
   shifts.forEach(s=>{
-    const label=s.code[0].toUpperCase()+s.code.slice(1)+' · Pod '+s.location.toUpperCase();
+    const label=s.code[0].toUpperCase()+s.code.slice(1)+' Shift '+s.location.toUpperCase();
     h+='<tr><th class="shift">'+label+'</th>';
     dates.forEach(d=>{
       const k=key(s.id,d), isGap=gap.has(k), names=cell[k]||[];
@@ -148,7 +148,7 @@ function render(){
     fix.style.display='block';
     fix.innerHTML='<h3>Verified fix <span class="verified">re-solved ✓</span></h3><ul>'+
       DATA.fix_labels.map(l=>'<li>'+l+'</li>').join('')+'</ul>'+
-      '<div class="caught">A single cancellation was caught as insufficient — both night pods require coverage, so the verified fix composes two relaxations.</div>'+
+      '<div class="caught">A single cancellation was caught as insufficient — both night shifts require coverage, so the verified fix composes two relaxations.</div>'+
       ((DATA.certificate&&DATA.certificate.proven_minimal)?'<div class="caught">✓ <b>Proven minimal</b> — '+DATA.certificate.resolves+' re-solves confirm each change is necessary; remove any one and it’s infeasible again.</div>':'');
   } else { fix.style.display='none'; }
 }

@@ -32,37 +32,41 @@ from app.solvers.factories import resolve_extra_factories_for_norms
 
 from .diagnostic import _forced_values, _unsatisfiable_coverage_linears
 
-# EM program config (2 pods, 6 shift instances: day/night/swing × two pods, A/B).
+# EM program config (6 shift instances: day/night/swing × two units, A/B).
 # Built once at import — pure literals, no DB.
 _CONFIG = build_em_program_config()
 
 
 # ---------------------------------------------------------------------------
-# Output anonymization — relabel pods to generic "Pod A/B" at the OUTPUT boundary
-# (the program's real pod names are not published). Applied as a whole to a
+# Output anonymization — rename the two units to "A/B" at the OUTPUT boundary
+# (the program's real unit names are not published). Applied as a whole to a
 # tool/route payload, so the display strings the LLM and /demo render are scrubbed
 # while the internal join keys stay mutually consistent within that payload.
 #
 # The substitution map is DERIVED from the (private) program config — the real
-# pod names are never hard-coded in this open layer. Per pod we map the display
-# name (config ``location.name``, e.g. the full pod label) → "Pod A/B…" and the
-# bare code (``location.id``) → "a/b…" used inside shift_instance ids like
-# "day-<code>". Display names run before codes so the full label is rewritten first.
+# unit names are never hard-coded in this open layer. Per unit we map:
+#   • the "@ <unit name>" suffix on a shift label → " A/B…"  ("Night Shift @ <X>"
+#     → "Night Shift A"),
+#   • the bare unit display name → "Unit A/B…" (fallback; rarely fires),
+#   • the bare code (``location.id``) → "a/b…" used inside shift_instance ids like
+#     "night-<code>" (a JOIN KEY — same rewrite on both sides keeps it consistent).
+# "@ name" runs first, then bare name, then code, so the fullest match wins.
 # ---------------------------------------------------------------------------
 def _build_pod_subs() -> tuple[tuple[str, str], ...]:
-    names, codes = [], []
+    ats, names, codes = [], [], []
     for i, loc in enumerate(_CONFIG.locations):
         letter = chr(ord("A") + i)
-        names.append((loc.name, f"Pod {letter}"))   # display label  → "Pod A"
-        codes.append((loc.id, letter.lower()))       # join-key code  → "a"
-    return tuple(names + codes)                       # display-first
+        ats.append((f"@ {loc.name}", letter))        # "Night Shift @ <X>" → "Night Shift A"
+        names.append((loc.name, f"Unit {letter}"))   # bare display name   → "Unit A"
+        codes.append((loc.id, letter.lower()))        # join-key code       → "a"
+    return tuple(ats + names + codes)
 
 
 _POD_SUBS = _build_pod_subs()
 
 
 def anonymize_pods(obj: Any) -> Any:
-    """Recursively rewrite pod references in a payload's string values. Identity on
+    """Recursively rewrite unit references in a payload's string values. Identity on
     everything else. Idempotent (no source token survives a pass)."""
     if isinstance(obj, str):
         for src, dst in _POD_SUBS:
@@ -96,12 +100,11 @@ class Scenario:
     block_start: str  # ISO date (a Monday)
     ndays: int
     residents: list[ResidentSpec]
-    # How a full-day-off / night block reads in the diagnosis. Defaults are residency
-    # phrasing; a faculty scenario relabels them (sabbatical / protected time / FTE cap)
-    # so the SAME engine explains faculty infeasibility in faculty terms.
+    # How a full-day-off / night block reads in the diagnosis (residency phrasing;
+    # overridable per scenario).
     pto_label: str = "PTO (vacation/conference)"
     night_label: str = "night restriction (didactics)"
-    role_label: str = ""  # display-role override (e.g. "attending"); empty = use each spec's level
+    role_label: str = ""  # display-role override; empty = use each spec's level
 
 
 _THU = "2026-07-09"  # Thursday — weekday 3, within the night day_of_week_mask
@@ -112,7 +115,7 @@ SCENARIOS: dict[str, Scenario] = {
         description=(
             "An Emergency Medicine residency block. On Thursday 2026-07-09 the night shift is "
             "unstaffable: 4 residents are on PTO (vacation/conference) and the other 4 "
-            "are restricted from nights (didactics) — so no one can cover either night pod."
+            "are restricted from nights (didactics) — so no one can cover either night shift."
         ),
         block_start="2026-07-06",  # Monday
         ndays=7,
@@ -131,7 +134,8 @@ SCENARIOS: dict[str, Scenario] = {
         id="em_block_capacity",
         description=(
             "A 7-day Emergency Medicine block the scheduler flags INFEASIBLE — but with "
-            "no single empty shift, so the coordinator can't see why: every shift still "
+            "no single empty shift, so a chief resident or associate program director can't "
+            "see why: every shift still "
             "has eligible residents. The cause is an aggregate capacity shortfall that "
             "only surfaces when coverage, availability and shift-minimums are solved "
             "together. Diagnose it and propose a verified fix."
@@ -147,33 +151,6 @@ SCENARIOS: dict[str, Scenario] = {
             ResidentSpec("Dr. Sam Okonkwo", "pgy1", min_shifts=4),
             ResidentSpec("Dr. Tara Voss", "pgy1", min_shifts=4),
             ResidentSpec("Dr. Umar Sheikh", "pgy1", min_shifts=4),
-        ],
-    ),
-    # Faculty/attending block — the SAME engine, relabeled. Demonstrates the diagnosis
-    # generalizes beyond residency to the faculty factors generic schedulers miss.
-    "faculty_block": Scenario(
-        id="faculty_block",
-        description=(
-            "A 7-day Emergency Medicine FACULTY (attending) block — the same engine applied to "
-            "faculty constraints. On Thursday 2026-07-09 neither night pod can be covered: 4 "
-            "attendings are on sabbatical / protected academic time and the other 4 are at their "
-            "clinical-FTE cap / on protected research, so none can take a night. Shows the "
-            "diagnosis generalizes beyond residency to the faculty factors generic schedulers miss."
-        ),
-        block_start="2026-07-06",  # Monday; Thursday 2026-07-09 is night-active
-        ndays=7,
-        pto_label="sabbatical / protected academic time",
-        night_label="protected research / clinical-FTE cap",
-        role_label="attending",
-        residents=[
-            ResidentSpec("Dr. Morgan Vale", "pgy3", pto=[_THU]),
-            ResidentSpec("Dr. Priya Anand", "pgy3", pto=[_THU]),
-            ResidentSpec("Dr. Theo Brandt", "pgy3", pto=[_THU]),
-            ResidentSpec("Dr. Lena Ortiz", "pgy3", pto=[_THU]),
-            ResidentSpec("Dr. Sam Devereux", "pgy3", night_restricted=[_THU]),
-            ResidentSpec("Dr. Nia Coleman", "pgy3", night_restricted=[_THU]),
-            ResidentSpec("Dr. Raj Bhatt", "pgy3", night_restricted=[_THU]),
-            ResidentSpec("Dr. Owen Frost", "pgy3", night_restricted=[_THU]),
         ],
     ),
 }
@@ -372,7 +349,7 @@ def _generate_candidates(sc: Scenario, blocked_pairs: set[tuple[int, str]]) -> l
     """One relaxation per (blocked resident, date): free them for night on that date.
     Stable IDs (``free:{idx}:{iso}``) — the LLM only ever ranks these; never invents one.
     Labels go through ``_candidate_label`` so they respect the scenario's vocabulary
-    (residency PTO/didactics vs. faculty sabbatical/protected-time)."""
+    (the scenario's ``pto_label`` / ``night_label``)."""
     cands = []
     for r_idx, d_iso in sorted(blocked_pairs):
         r = sc.residents[r_idx]

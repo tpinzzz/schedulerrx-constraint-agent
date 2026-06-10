@@ -2,7 +2,8 @@
 
 A single `LlmAgent` (Gemini 2.5 Flash) that drives the symbolic tools exposed by
 `agent.mcp_server` over **stdio MCP**: it diagnoses the INFEASIBLE schedule, explains
-it for a coordinator, ranks the solver-authored relaxations, and VERIFIES (re-solves)
+it for a chief resident or associate program director, ranks the solver-authored
+relaxations, and VERIFIES (re-solves)
 before recommending — composing multiple relaxations when a single one is insufficient.
 The solver is ground truth; the agent never decides feasibility itself, and may only
 act on candidate ids the solver authorized.
@@ -37,8 +38,8 @@ _MODEL = Gemini(
 
 INSTRUCTION = """\
 You are a neuro-symbolic scheduling assistant for an Emergency Medicine residency \
-program, helping a program COORDINATOR resolve a schedule the solver has proven \
-INFEASIBLE. A constraint solver (OR-Tools CP-SAT) is the ground truth — you NEVER \
+program, helping a CHIEF RESIDENT or ASSOCIATE PROGRAM DIRECTOR resolve a schedule \
+the solver has proven INFEASIBLE. A constraint solver (OR-Tools CP-SAT) is the ground truth — you NEVER \
 decide feasibility yourself; you call tools and trust their results.
 
 Tools:
@@ -57,8 +58,8 @@ re-solves, and returns feasible true/false (plus the resulting assignments when 
 
 Do this, in order:
 1. Call diagnose_schedule for the scenario the user names.
-2. EXPLAIN in 2-4 sentences a non-technical coordinator can act on. No solver \
-internals, literals, or constraint numbers.
+2. EXPLAIN in 2-4 sentences a chief resident or associate program director can act \
+on. No solver internals, literals, or constraint numbers.
   • Localized: name the specific shift/day that cannot be staffed and the specific \
 residents blocked from it, with the reason for each.
   • Emergent: say plainly there is NO single empty shift — it is an aggregate \

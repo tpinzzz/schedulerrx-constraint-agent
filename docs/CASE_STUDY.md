@@ -2,6 +2,12 @@
 
 *(Anonymized. Real specifics are kept in the team's private notes.)*
 
+> **This is a retrospective analysis.** The block was originally resolved by hand at the
+> time. Pointed at the same block afterward, the agent reproduced the diagnosis and a
+> solver-verified fix in seconds — entirely read-only. Nothing here was applied to a
+> production schedule; the value shown is turning an after-the-fact "why was that
+> unsolvable?" into a verified answer in seconds instead of engineer-hours.
+
 ## The problem
 
 An Emergency Medicine residency program runs a constraint solver to build each ~4-week
@@ -9,9 +15,10 @@ schedule "block." For one block — **14 residents, 28 days** — the solver ret
 **`INFEASIBLE`**. No schedule could be produced, and the tool gave no actionable reason:
 no "this shift is empty," no "this rule failed." Just: it can't be solved.
 
-This is the worst kind of failure for a coordinator. The block *looks* fine — every shift
-has eligible residents, everyone's time-off looks reasonable — yet nothing the coordinator
-tries by hand resolves it, because the real cause isn't visible to the eye.
+This is the worst kind of failure for a chief resident or associate program director. The
+block *looks* fine — every shift has eligible residents, everyone's time-off looks
+reasonable — yet nothing tried by hand resolves it, because the real cause isn't visible to
+the eye.
 
 ## Why it's genuinely hard
 
@@ -66,9 +73,9 @@ adds an available day, the other relaxes a rigid target.
 ## Why it matters
 
 This turns *"INFEASIBLE — good luck"* into *"here are the two smallest changes that make it
-solvable, and we re-solved to prove each one works."* For a program coordinator that's the
-difference between hours of trial-and-error (or silently over-riding the solver) and a
-two-line, defensible decision.
+solvable, and we re-solved to prove each one works."* For a chief resident or associate
+program director that's the difference between hours of trial-and-error (or silently
+over-riding the solver) and a two-line, defensible decision.
 
 - **Verified, not hallucinated** — the solver confirms every proposed fix.
 - **Minimal & ranked** — smallest changes first, ordered by real-world disruption.
@@ -79,7 +86,8 @@ two-line, defensible decision.
 
 ## How it was validated
 
-Run against the **real production data** for the failing block (read-only), on the exact
-solver build that produced the failure. The baseline infeasibility was reproduced, the fixes
-were verified by re-solving, and minimality was confirmed by the deletion filter (removing any
-single element of a fix restores infeasibility).
+Run **retrospectively** against the data from the real failing block (anonymized, read-only),
+on the same solver build that produced the failure. The baseline infeasibility was reproduced,
+the fixes were verified by re-solving, and minimality was confirmed by the deletion filter
+(removing any single element of a fix restores infeasibility). Nothing was written back to a
+production schedule.

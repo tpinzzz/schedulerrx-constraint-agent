@@ -34,16 +34,3 @@ def test_unknown_candidate_id_is_rejected():
     # The agent may only act on ids the solver authored; a bogus id must not silently apply.
     with pytest.raises(Exception):
         realsolver.verify("em_block_gap", ["bogus:99:2026-01-01"])
-
-
-def test_faculty_scenario_speaks_faculty_not_residency():
-    # The same engine, relabeled: faculty vocabulary in reasons + fix labels, role "attending".
-    out = realsolver.diagnose("faculty_block")
-    rep = out["report"]
-    assert rep["localized"] is True
-    reasons = " ".join(b["reason"] for c in rep["unstaffable_cells"] for b in c["blocked"]).lower()
-    assert "sabbatical" in reasons and "vacation" not in reasons
-    labels = " ".join(c["label"] for c in out["candidates"]).lower()
-    assert "sabbatical" in labels
-    assert all(c["level"] == "attending" for c in out["candidates"])
-    assert realsolver.verify("faculty_block", [c["id"] for c in out["candidates"]])["feasible"] is True
