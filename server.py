@@ -21,6 +21,57 @@ from agent import realsolver
 _AGENTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "adk_app")
 app = get_fast_api_app(agents_dir=_AGENTS_DIR, web=True)
 
+
+# --- Reliability guard: force non-token-streaming on the agent endpoint ---------
+# The dev-ui's "Token Streaming" toggle sends `streaming: true` to /run_sse. With the
+# Gemini 3.5 Flash *thinking* model + function calling, token-streaming mode returns an
+# empty STOP right after the first tool call (no verify loop, no answer) — the agent
+# appears to "hang." It is HTTP 200 with empty content, so the model's retry options
+# (which fire only on 4xx/5xx) never catch it. Non-streaming is rock-solid, so we strip
+# the flag and the dev-ui behaves identically whether or not a judge flips the toggle.
+#
+# This is PURE ASGI middleware (not @app.middleware/BaseHTTPMiddleware): the latter is
+# incompatible with streaming/SSE responses. We only rewrite the request body and pass
+# `send` through untouched, so the SSE response stream is never buffered or wrapped.
+import json as _json  # noqa: E402
+
+
+class _ForceNonTokenStreaming:
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if not (scope.get("type") == "http"
+                and scope.get("method") == "POST"
+                and scope.get("path", "").rstrip("/") == "/run_sse"):
+            return await self.app(scope, receive, send)
+        # Buffer the (small JSON) request body, drop streaming:true, then re-serve it.
+        body, more = b"", True
+        while more:
+            msg = await receive()
+            body += msg.get("body", b"")
+            more = msg.get("more_body", False)
+        try:
+            data = _json.loads(body)
+            if data.get("streaming"):
+                data["streaming"] = False
+                body = _json.dumps(data).encode()
+        except Exception:
+            pass  # not JSON / unexpected shape → forward as-is
+        served = False
+
+        async def _receive():
+            nonlocal served
+            if not served:
+                served = True
+                return {"type": "http.request", "body": body, "more_body": False}
+            return await receive()  # delegate real disconnect events so SSE ends cleanly
+
+        await self.app(scope, _receive, send)
+
+
+app.add_middleware(_ForceNonTokenStreaming)
+
 # --- /demo: deterministic before/after calendar (cached; no LLM) ---
 _demo_cache: dict[str, dict] = {}
 
@@ -82,6 +133,16 @@ _DEMO_HTML = r"""<!doctype html>
   .verified{display:inline-block;background:var(--green);color:#fff;border-radius:6px;padding:2px 8px;font-size:12px;font-weight:700}
   footer{color:#8a8472;font-size:12px;text-align:center;margin:26px 0}
   a{color:var(--gold)}
+  .askbtn{margin-left:auto;display:inline-flex;align-items:center;gap:6px;border:0;cursor:pointer;
+          background:var(--gold);color:var(--slate);font-weight:700;padding:9px 16px;border-radius:8px;
+          text-decoration:none;font-size:14px;white-space:nowrap}
+  .askbtn:hover{filter:brightness(1.06)}
+  .askhint{font-size:12.5px;color:var(--slate2);margin:0 0 16px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .askhint code{background:#fff;border:1px solid var(--line);border-radius:5px;padding:2px 7px;font-size:12px;color:var(--slate)}
+  .copybtn{border:1px solid var(--slate);background:#fff;color:var(--slate);border-radius:6px;padding:3px 9px;
+           font-size:11px;cursor:pointer;font-weight:700}
+  .copybtn:hover{background:var(--slate);color:#fff}
+  .copied{color:var(--green);font-weight:700}
 </style></head>
 <body>
 <header>
@@ -97,6 +158,13 @@ _DEMO_HTML = r"""<!doctype html>
       <button id="btnAfter" onclick="setMode('after')">After fix</button>
     </div>
     <span id="banner" class="banner before">INFEASIBLE — a shift can't be staffed</span>
+    <button class="askbtn" onclick="askAgent()">Ask the agent why&nbsp;→</button>
+  </div>
+  <div class="askhint">
+    Opens the live agent in a new tab and copies the prompt — just paste it (⌘V / Ctrl-V) in the message box:
+    <code id="promptText">Diagnose the em_block_gap schedule and propose a fix.</code>
+    <button class="copybtn" onclick="copyPrompt()">Copy prompt</button>
+    <span id="copied" class="copied" style="display:none">✓ copied</span>
   </div>
   <div id="grid"></div>
   <div class="fix" id="fix" style="display:none"></div>
@@ -105,13 +173,21 @@ _DEMO_HTML = r"""<!doctype html>
 <script>
 const WK=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 let DATA=null, MODE='before';
+let AGENT_PROMPT='Diagnose the em_block_gap schedule and propose a fix.';
 function wd(iso){const [y,m,d]=iso.split('-').map(Number);return WK[new Date(y,m-1,d).getDay()];}
 function key(si,date){return si+'|'+date;}
+function flashCopied(){const c=document.getElementById('copied');if(!c)return;
+  c.style.display='inline';setTimeout(()=>{c.style.display='none';},2000);}
+function copyPrompt(){ navigator.clipboard.writeText(AGENT_PROMPT).then(flashCopied).catch(()=>{}); }
+function askAgent(){ try{navigator.clipboard.writeText(AGENT_PROMPT);}catch(e){}
+  flashCopied(); window.open('/dev-ui','_blank'); }
 
 function render(){
   if(!DATA) return;
   document.getElementById('scenario').innerHTML =
     '<b>'+ (DATA.scenario||'') +'</b> — '+ (DATA.description||'');
+  AGENT_PROMPT='Diagnose the '+(DATA.scenario||'em_block_gap')+' schedule and propose a fix.';
+  const pt=document.getElementById('promptText'); if(pt) pt.textContent=AGENT_PROMPT;
   // build lookup: (shift_instance_id|date) -> [names]
   const cell={}; (DATA.after_schedule||[]).forEach(e=>{
     const k=key(e.metadata.shift_instance_id, e.date); (cell[k]=cell[k]||[]).push(e.resident_name.replace('Dr. ',''));
